@@ -1,0 +1,222 @@
+////////////////////////////////////////////////////////////////////////////
+//
+// Copyright 1993-2015 NVIDIA Corporation.  All rights reserved.
+//
+// Please refer to the NVIDIA end user license agreement (EULA) associated
+// with this source code for terms and conditions that govern your use of
+// this software. Any use, reproduction, disclosure, or distribution of
+// this software and related documentation outside the terms of the EULA
+// is strictly prohibited.
+//
+////////////////////////////////////////////////////////////////////////////
+
+/* Template project which demonstrates the basics on how to setup a project
+* example application.
+* Host code.
+*/
+
+// includes, system
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+
+// includes CUDA
+#include <cuda_runtime.h>
+
+// includes, project
+#include <helper_cuda.h>
+#include <helper_functions.h> // helper functions for SDK examples
+
+////////////////////////////////////////////////////////////////////////////////
+// declaration, forward
+void runTest(int argc, char **argv);
+
+extern "C"
+void computeGold(float *reference, float *idata, const unsigned int len);
+
+////////////////////////////////////////////////////////////////////////////////
+//! Simple test kernel for device functionality
+//! @param g_idata  input data in global memory
+//! @param g_odata  output data in global memory
+////////////////////////////////////////////////////////////////////////////////
+__global__ void
+testKernel(double* out_data, unsigned int nsteps)
+{
+	// thread id inside thread block and inside grid
+	const unsigned int tidb = threadIdx.x;
+	const unsigned int tid = blockIdx.x * blockDim.x + tidb;
+
+	// perform some computations
+	double step;
+
+	if(tid < nsteps){
+		step = (1.0)/((double) nsteps);
+		double x = ((double)tid + 0.5) * step;
+		out_data[tid] = (double) 1.0 / (1.0 + x * x);
+	}
+
+	// Synchronize the threads
+	/*__syncthreads();
+
+	// Test if if it's the first thread of the birst block
+	if(tid == 0){
+		double sum = 0.0;
+
+		// Make the sum to do the computation
+		for(int i = 0 ; i < nsteps ; i++){
+			sum += out_data[i];
+		}
+
+		sum *= 1.0 / (double) nsteps;
+		out_data[0] = sum;
+		}*/
+}
+
+#define NB_THREADS 1000
+////////////////////////////////////////////////////////////////////////////////
+// Program main
+/////////////////////////////////////////////////////////////////////////////// /
+int
+main(int argc, char **argv)
+{
+
+	// Create timer
+	StopWatchInterface *timer = 0;
+	sdkCreateTimer(&timer);
+	sdkStartTimer(&timer);
+	
+	// Host copies
+	int nbsteps;
+  double *results;
+	
+	// Device copies
+	double *dev_results;
+	
+	// Attribute the number of the steps
+	nbsteps = 100000000;
+
+	// Allocation for variable of the results
+	results = (double*)malloc(nbsteps*sizeof(double));
+	
+	// Allocation device copies of results
+	cudaMalloc((void**) &dev_results, nbsteps*sizeof(double));
+	
+	// Copy inputs to the device
+	//cudaMemcpy(dev_results, &results, sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemset(dev_results, 0, nbsteps*sizeof(double));
+	
+	// Method for calculation of the value of pi
+	testKernel<<< nbsteps/NB_THREADS, NB_THREADS >>>(dev_results, nbsteps);
+		
+	// Copy device result back to host copy
+	cudaMemcpy(results, dev_results, nbsteps*sizeof(double), cudaMemcpyDeviceToHost);
+  
+	
+	// Calcul of pi value
+	double pi = 4.0 * results[0];
+
+	//print the result of pi value
+	printf("%.17lf \n", pi);
+	
+	// End and delete the timer
+	sdkStopTimer(&timer);
+	printf("Processing time (in ms) : %f \n", sdkGetTimerValue(&timer));
+	sdkDeleteTimer(&timer);
+	
+	// Free memory of the device
+	cudaFree(dev_results);
+
+	// Free memory of the host
+	free(results);
+	
+	return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//! Run a simple test for CUDA
+////////////////////////////////////////////////////////////////////////////////
+void
+runTest(int argc, char **argv)
+{
+	/*bool bTestResult = true;
+    printf("%s Starting...\n\n", argv[0]);
+
+    // use command-line specified CUDA device, otherwise use device with highest Gflops/s
+    int devID = findCudaDevice(argc, (const char **)argv);
+
+    StopWatchInterface *timer = 0;
+    sdkCreateTimer(&timer);
+    sdkStartTimer(&timer);
+
+    unsigned int num_threads = 1000;
+    unsigned int mem_size = sizeof(float) * num_threads;
+
+    // allocate host memory
+    float *h_idata = (float *) malloc(mem_size);
+		double *dev_results;
+		
+    // initalize the memory
+    for (unsigned int i = 0; i < num_threads; ++i)
+    {
+        h_idata[i] = (float) i;
+		}
+
+    // allocate device memory for result
+    double* results;
+    checkCudaErrors(cudaMemcpy(results, h_idata, mem_size,
+                               cudaMemcpyHostToDevice));
+
+    // allocate device memory
+    int nbsteps = 1000000;
+    checkCudaErrors(cudaMalloc((void **) &nbsteps, mem_size));
+
+    // setup execution parameters
+    //dim3  grid(1, 1, 1);
+    //dim3  threads(num_threads, 1, 1);
+
+    // execute the kernel
+    testKernel<<< nbsteps/num_threads, num_threads >>>(results, nbsteps);
+
+    // check if kernel execution generated and error
+    getLastCudaError("Kernel execution failed");
+
+    // allocate mem for the result on host side
+    double *h_odata = (double *) malloc(mem_size);
+    // copy result from device to host
+    checkCudaErrors(cudaMemcpy(h_odata, results, sizeof(double) * num_threads,
+                               cudaMemcpyDeviceToHost));
+
+    sdkStopTimer(&timer);
+    printf("Processing time: %f (ms)\n", sdkGetTimerValue(&timer));
+    sdkDeleteTimer(&timer);
+
+    // compute reference solution
+    float *reference = (float *) malloc(mem_size);
+    computeGold(reference, h_idata, num_threads);
+
+    // check result
+    if (checkCmdLineFlag(argc, (const char **) argv, "regression"))
+    {
+        // write file for regression test
+        sdkWriteFile("./data/regression.dat", h_odata, num_threads, 0.0f, false);
+    }
+    else
+    {
+        // custom output handling when no regression test running
+        // in this case check if the result is equivalent to the expected solution
+        //bTestResult = compareData(reference, h_odata, num_threads, 0.0f, 0.0f);
+    }
+
+    // cleanup memory
+    free(h_idata);
+    free(h_odata);
+    free(reference);
+		free(results);
+    //checkCudaErrors(cudaFree(nsteps));
+    //checkCudaErrors(cudaFree(out_data));
+
+    exit(bTestResult ? EXIT_SUCCESS : EXIT_FAILURE);
+
+	*/
+}
