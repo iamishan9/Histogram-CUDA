@@ -29,7 +29,7 @@
 
 // includes, project
 #include <helper_cuda.h>
-#include <helper_functions.h> // helper functions for SDK examples
+#include <helper_functions.h> 
 
                         
 
@@ -39,63 +39,55 @@
 
 using namespace std;
 
-
+///////////////////////////////////////////////
+////////////  CPU FUNCTION TO    //////////////
+///////////  READ THE INPUT FILE //////////////
+///////////////////////////////////////////////
 vector <char> readFile(string inputFile){
     char ch;    
-    
     vector <char> vv;
-
     fstream fin(inputFile, fstream::in);
-
     
     while (fin >> noskipws >> ch) {
-        // cout << ch << "\n";
-        if(int(ch)>31 && int(ch)<127 && int(ch)!= 36 && int(ch) != 42) 
+        if(int(ch)>=MIN_ASCII && int(ch)<=MAX_ASCII && int(ch)!= ASCII_DOLLAR && int(ch) != ASCII_ASTERIK) 
             vv.push_back(ch);
     }
-
-    // char charArr[vv.size()];
-    // copy(input.begin(), input.end(), charArr);
 
     return vv;
 }
 
 
+///////////////////////////////////////////////
+////////////  CPU FUNCTION TO    //////////////
+///////////  WRITE HISTOGRAM TO CSV FILE  /////
+///////////////////////////////////////////////
 void writeResult(char *nameOutputfile, unsigned int *charCount){
     ofstream outputFile(nameOutputfile);
 
-    // std::ofstream outputFile(nameOutputfile); // Open output file
+    if(outputFile.is_open()){ 
 
-    if(outputFile.is_open()){ // Test if the file is opened
+        for(int i = 0 ; i < NB_CHARS ; i++){
+                if(i+MIN_ASCII < ASCII_DOLLAR){
+                    outputFile << char(i + MIN_ASCII);
+                }
+                else if(i+MIN_ASCII >= ASCII_DOLLAR && i+MIN_ASCII<ASCII_ASTERIK - CHAR_DIFF_BET_36_42){
 
-        // whie(i <= 69)
-
-
-        for(int i = 0 ; i <= 68 ; i++){
-            // cout<<" val of I is "<<i<<endl;
-            if(i != 4 && i!= 10){
-                if(i+32<65){
-                    outputFile << char(i + 32);
+                    outputFile << char(i + MIN_ASCII + CHAR_DIFF_BET_36_42);
+                }
+                else if(i+MIN_ASCII > ASCII_ASTERIK-CHAR_DIFF_ABOVE_42 && i+MIN_ASCII<UPPERCASE_ALPHABET-CHAR_DIFF_ABOVE_42){
+                    outputFile << char(i + MIN_ASCII + CHAR_DIFF_ABOVE_42);
                 }
                 else{
-                    outputFile << char(i + 58);
+                    outputFile << char(i + SKIP_UPPERCASE + CHAR_DIFF_ABOVE_42);
                 }
 
                 outputFile << " : ";
-                // if(i == 5 || i == 43){
-                //     outputFile << charCount[i-1];
-                // }
-                // else{
                 outputFile << charCount[i];
-                // }
                 outputFile << "\n";
-            }
         }
     }
-
     outputFile.close();
 }
-
 
 ///////////////////////////////////////////////
 ////////////  CPU FUNCTION TO    //////////////
@@ -104,54 +96,42 @@ void writeResult(char *nameOutputfile, unsigned int *charCount){
 
 void genHistogramCPU(vector<char> dict){
 
-    vector<int> count(NB_CHARS, 0);
+    vector<int> count(69, 0);       // used 69 instead of NB_CHARS to remove complexity of ignoreing $ and *
 
     for(int i=0; i<dict.size(); i++){
 
-        if(int(dict[i]) < 65){
-           count[int(dict[i]) - 32] += 1;
+        if(int(dict[i]) < UPPERCASE_ALPHABET){
+           count[int(dict[i]) - MIN_ASCII] += 1;
         }
-
         // for uppercase only
-        else if(int(dict[i]) >= 65 && dict[i] <= 90 ){
-            count[int(dict[i]) - 32 + 6] += 1;
-
+        else if(int(dict[i]) >= UPPERCASE_ALPHABET && dict[i] <= 90 ){
+            count[int(dict[i]) - MIN_ASCII + 6] += 1;
         }
-
         // after uppercase characters
         else if(int(dict[i]) > 90){
-            count[int(dict[i]) - 58] += 1;
+            count[int(dict[i]) - SKIP_UPPERCASE] += 1;
         }
-
     }
 
     ofstream opfile;
-
     opfile.open("fromCPU.csv");
  
     for(int i = 0 ; i <= 68 ; i++){
-        
-        // cout<<" val of I is "<<i<<endl;
+
         if(i != 4 && i!= 10){
-            if(i+32<65){
-                opfile << char(i + 32);
+            if(i+MIN_ASCII<UPPERCASE_ALPHABET){
+                opfile << char(i + MIN_ASCII);
             }
             else{
-                opfile << char(i + 58);
+                opfile << char(i + SKIP_UPPERCASE);
             }
 
             opfile << " : ";
-
             opfile << count[i];
-
             opfile << "\n";
         }
     }
-
-
     opfile.close();
-
-
 }
 
 
@@ -161,12 +141,12 @@ void genHistogramCPU(vector<char> dict){
 int main(int argc, char **argv){
     
     // check if arguments are valid
-    if (argc != 5 || strcmp(inputPar, "-i") != 0 || strcmp(outputPar, "-o") != 0) {
-        printf("COMMAND : ./template -i <inputText.txt> -o <outputHisto.csv> \n");
+    if (argc != 5 || strcmp(argv[1], "-i") != 0 || strcmp(argv[3], "-o") != 0) {
+        printf("COMMAND FORMAT : ./template -i <inputText.txt> -o <outputHisto.csv> \n");
         return -1;
     }
 
-
+    cout<<"BLOCKS "<<NB_BLOCKS<<" AND THREADS "<<NB_THREADS<<endl;
 
     // get input and output file names    
     char *inputFile = argv[2]; 
@@ -216,7 +196,7 @@ int main(int argc, char **argv){
     // allocation of device copies
     char *devAllChars;                  // device copy of all characters from file
     unsigned int *devCharCount;         // to contain the final histogram
-    unsigned int *devBlockCharCount;    // for while using shared memory, this will 
+    unsigned int *devBlockCharCount;    // for while using shared memory, this will contain the data for each block
 
     
     StopWatchInterface *timer = 0;
@@ -259,12 +239,8 @@ int main(int argc, char **argv){
 
 
 
-
-
-
-
-
-
+    //////    USING SHARED MEMORY
+    ////////////////////////////////////////////////////////////////
 
     StopWatchInterface *timer2 = 0;
     sdkCreateTimer(&timer2);
@@ -295,10 +271,7 @@ int main(int argc, char **argv){
     printf("GPU Processing time (in ms)[using shared memory] : %f \n", sdkGetTimerValue(&timer2));
     sdkDeleteTimer(&timer2);
 
-    // cout<<"the count of a is "<<charCount[0]<<endl;
-
     // write the results to output file
-
     writeResult(outputFile, charCount);
 
 
@@ -306,11 +279,6 @@ int main(int argc, char **argv){
     cudaFree(devCharCount);
     cudaFree(devAllChars); 
     cudaFree(devBlockCharCount);
-
-    //without shared memory
-     // Create timer     
-    // StopWatchInterface *timer = 0;
-
 
     // free host memory
     free(allChars);

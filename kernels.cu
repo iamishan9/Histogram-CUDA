@@ -12,25 +12,27 @@ __global__ void genHistogram(char *dict, unsigned int *arrCount, unsigned int ch
     if(tid < charCount){
 
         for(int i=tid; i<charCount; i += TOTAL_THREAD){
-            // if(int(dict[i]) ==65 || int(dict[i]) == 97){
-            //     atomicAdd(&arrCount[0], 1);
-            // }
-
-
             // before uppercase characters
-            if(int(dict[i]) < 65){
-                atomicAdd(&arrCount[int(dict[i]) - 32], 1);
+            if(int(dict[i]) < ASCII_DOLLAR){
+                atomicAdd(&arrCount[int(dict[i]) - MIN_ASCII], 1);
+            }
+            else if(int(dict[i]) > ASCII_DOLLAR && int(dict[i]) < ASCII_ASTERIK){
+                atomicAdd(&arrCount[int(dict[i]) - MIN_ASCII - CHAR_DIFF_BET_36_42], 1);
+            }
+
+            else if(int(dict[i])>ASCII_ASTERIK && int(dict[i]) < UPPERCASE_ALPHABET){
+                atomicAdd(&arrCount[int(dict[i]) - MIN_ASCII - CHAR_DIFF_ABOVE_42], 1);
             }
 
             // for uppercase only
-            else if(int(dict[i]) >= 65 && dict[i] <= 90 ){
-                atomicAdd(&arrCount[int(dict[i]) - 32 + 6], 1);
+            else if(int(dict[i]) >= UPPERCASE_ALPHABET && dict[i] <= 90 ){
+                atomicAdd(&arrCount[int(dict[i]) - MIN_ASCII - CHAR_DIFF_ABOVE_42 + 6], 1);
 
             }
 
             // after uppercase characters
             else if(int(dict[i]) > 90){
-                atomicAdd(&arrCount[int(dict[i]) - 58], 1);
+                atomicAdd(&arrCount[int(dict[i]) - SKIP_UPPERCASE - CHAR_DIFF_ABOVE_42], 1);
             }
         }
     }
@@ -48,36 +50,40 @@ __global__ void genHistogramShared(char *dict, unsigned int *arrCount, unsigned 
     const unsigned int tidb = threadIdx.x;
     const unsigned int tid = blockIdx.x * blockDim.x + tidb;
 
-    __shared__ unsigned int sum_by_block[NB_CHARS]; // Store the sum of the number of car by blocks
+    __shared__ unsigned int charCountByBlock[NB_CHARS]; 
 
-    if(tid < charCount){ // Check if the number of the threads is less than the number of elements in the dictionnary
+    if(tid < charCount){ 
 
         for(int i=tid; i<charCount; i += TOTAL_THREAD){
 
             // before uppercase characters
-            if(int(dict[i]) < 65){
-                atomicAdd(&sum_by_block[int(dict[i]) - 32], 1);
+            if(int(dict[i]) < ASCII_DOLLAR){
+                atomicAdd(&charCountByBlock[int(dict[i]) - MIN_ASCII], 1);
+            }
+            else if(int(dict[i]) > ASCII_DOLLAR && int(dict[i]) < ASCII_ASTERIK){
+                atomicAdd(&charCountByBlock[int(dict[i]) - MIN_ASCII - CHAR_DIFF_BET_36_42], 1);
+            }
+
+            else if(int(dict[i])>ASCII_ASTERIK && int(dict[i]) < UPPERCASE_ALPHABET){
+                atomicAdd(&charCountByBlock[int(dict[i]) - MIN_ASCII - CHAR_DIFF_ABOVE_42], 1);
             }
 
             // for uppercase only
-            else if(int(dict[i]) >= 65 && dict[i] <= 90 ){
-                atomicAdd(&sum_by_block[int(dict[i]) - 32 + 6], 1);
+            else if(int(dict[i]) >= UPPERCASE_ALPHABET && dict[i] <= 90 ){
+                atomicAdd(&charCountByBlock[int(dict[i]) - MIN_ASCII - CHAR_DIFF_ABOVE_42 + 6], 1);
 
             }
 
             // after uppercase characters
-            else if(dict[i]>90){
-                atomicAdd(&sum_by_block[int(dict[i]) - 58], 1);
+            else if(int(dict[i]) > 90){
+                atomicAdd(&charCountByBlock[int(dict[i]) - SKIP_UPPERCASE - CHAR_DIFF_ABOVE_42], 1);
             }
         }
-                // For no usage of the shared memory
-                //atomicAdd(&tab_of_occurences[blockIdx.x * NUMBER_OF_CARS + int(dictionnary[i]) - 32], 1);
-
-        __syncthreads(); // To wait for all calculations are done
+        __syncthreads(); 
 
         if(tidb == 0){
             for(int i = 0 ; i < NB_CHARS ; i++){
-                arrCount[blockIdx.x * NB_CHARS + i] = sum_by_block[i];
+                arrCount[blockIdx.x * NB_CHARS + i] = charCountByBlock[i];
             }
         }
     }
@@ -87,7 +93,7 @@ __global__ void genHistogramShared(char *dict, unsigned int *arrCount, unsigned 
 ////  GPU KERNEL TO COMBINE ALL BLOCK DATA ////
 ///////////////////////////////////////////////
 __global__ void combineBlockData(unsigned int *blockCharData,unsigned int *devCharCount, unsigned int size){
-    const unsigned int tidb = threadIdx.x; // Because one block
+    const unsigned int tidb = threadIdx.x; 
     unsigned int charCount = 0;
 
     for(int i = tidb ; i < size ; i+= NB_CHARS){
