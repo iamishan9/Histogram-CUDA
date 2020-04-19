@@ -2,8 +2,8 @@
 #define __CONFIG_H
 
 #define NB_CHARS 67							// bin count 
-#define NB_BLOCKS 4							// number of blocks to be used for calculation
-#define NB_THREADS 256						// number of threads per block used for calculation
+#define NB_BLOCKS 32						// number of blocks to be used for calculation
+#define NB_THREADS 1024						// number of threads per block used for calculation
 #define TOTAL_THREAD NB_BLOCKS*NB_THREADS	// total thread count
 
 #define ASCII_DOLLAR 36						// to not use the ascii of $

@@ -36,7 +36,7 @@
 #include "config.h"     //include config file
 #include "kernels.cu"   // include kernel file
 
-
+#include "cuda_profiler_api.h"
 using namespace std;
 
 ///////////////////////////////////////////////
@@ -236,9 +236,6 @@ int main(int argc, char **argv){
     cudaFree(devAllChars); 
 
 
-
-
-
     //////    USING SHARED MEMORY
     ////////////////////////////////////////////////////////////////
 
@@ -256,9 +253,13 @@ int main(int argc, char **argv){
     cudaMemset(devCharCount, 0, NB_CHARS*sizeof(unsigned int));
     cudaMemset(devBlockCharCount, 0, NB_CHARS*NB_BLOCKS*sizeof(unsigned int));
 
-  
+    // cudaProfilerStart();
+
     // call the kernel to create histogram for each block
     genHistogramShared <<< NB_BLOCKS, NB_THREADS >>>(devAllChars, devBlockCharCount, COUNTCHAR);
+    
+
+    // cudaProfilerStop();
     
     // combine the data of all blocks to produce one result containing the histogram
     combineBlockData<<< 1, NB_CHARS >>>(devBlockCharCount, devCharCount, NB_CHARS*NB_BLOCKS);
